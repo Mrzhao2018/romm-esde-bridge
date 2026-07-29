@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch the EmuDeck-managed ES-DE systems file
+
+[Path]
+PathChanged=/home/deck/ES-DE/custom_systems/es_systems.xml
+Unit=romm-esde-config.service
+
+[Install]
+WantedBy=default.target
+

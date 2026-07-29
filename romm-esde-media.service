@@ -1,0 +1,10 @@
+[Unit]
+Description=Download RomM small covers, large covers and screenshots
+After=network-online.target romm-esde-sync.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/deck/.local/bin/romm-esde-client media --workers 4
+Nice=15
+IOSchedulingClass=idle
+

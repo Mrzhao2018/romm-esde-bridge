@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch ES-DE RomM user metadata
+
+[Path]
+PathChanged=/home/deck/ES-DE/gamelists/romm-pc98/gamelist.xml
+Unit=romm-esde-user-sync.service
+
+[Install]
+WantedBy=default.target
+

@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+
+# Runtime credentials and machine-specific configuration
+.env
+.env.*
+!.env.example
+bridge.env
+deck-config.toml
+deck-offline-test.toml
+*.token
+*-token
+credentials/
+
+# Local operational notes and generated output
+IMPLEMENTATION_PLAN.md
+LOCAL_OPERATIONS.md
+bridge-output/
+dist/
+*.log
+*.part
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,9 @@
+[Unit]
+Description=Synchronize RomM catalog into ES-DE
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/deck/.local/bin/romm-esde-sync
+Nice=10
+

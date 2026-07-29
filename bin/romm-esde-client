@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /usr/bin/python3 /home/deck/.local/share/romm-esde/client.py "$@"

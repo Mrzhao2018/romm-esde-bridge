@@ -1,0 +1,9 @@
+[Unit]
+Description=Push ES-DE favorite and hidden changes to RomM
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/deck/.local/bin/romm-esde-client user-sync
+Nice=10
+

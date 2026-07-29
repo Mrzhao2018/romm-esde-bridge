@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch the EmuDeck-managed ES-DE launcher
+
+[Path]
+PathChanged=/home/deck/Emulation/tools/launchers/es-de/es-de.sh
+Unit=romm-esde-config.service
+
+[Install]
+WantedBy=default.target
+

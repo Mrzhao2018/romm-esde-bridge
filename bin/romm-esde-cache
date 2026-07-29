@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /home/deck/.local/bin/romm-esde-client prune "$@"

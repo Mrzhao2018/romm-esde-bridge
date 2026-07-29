@@ -1,0 +1,11 @@
+[Unit]
+Description=Back up Steam Deck configuration daily when reachable
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

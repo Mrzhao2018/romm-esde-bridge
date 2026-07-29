@@ -1,0 +1,19 @@
+#!/bin/sh
+unset LD_PRELOAD
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+log_dir=/home/deck/.local/state/romm-esde
+log_file="$log_dir/launch.log"
+mkdir -p "$log_dir"
+if [ -f "$log_file" ] && [ "$(wc -c <"$log_file")" -gt 5242880 ]; then
+    mv "$log_file" "$log_file.previous"
+fi
+{
+    printf '\n[%s] launch %s\n' "$(date --iso-8601=seconds)" "$1"
+    /home/deck/.local/bin/romm-esde-client launch "$@"
+    status=$?
+    printf '[%s] exit status=%s\n' "$(date --iso-8601=seconds)" "$status"
+    exit "$status"
+} >>"$log_file" 2>&1

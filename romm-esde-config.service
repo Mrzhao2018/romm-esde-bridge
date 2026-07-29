@@ -1,0 +1,7 @@
+[Unit]
+Description=Restore the RomM custom ES-DE system after EmuDeck changes
+
+[Service]
+Type=oneshot
+ExecStart=/home/deck/.local/bin/romm-esde-client repair-system
+

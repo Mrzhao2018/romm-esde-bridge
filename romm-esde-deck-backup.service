@@ -1,0 +1,16 @@
+[Unit]
+Description=Pull a versioned Steam Deck configuration backup
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/var/lib/romm-esde-bridge
+
+[Service]
+Type=oneshot
+User=romm-esde-bridge
+Group=romm-esde-bridge
+Environment=BACKUP_HOST=steamdeck
+Environment=BACKUP_DESTINATION=/var/lib/romm-esde-bridge/device-backups/steamdeck
+EnvironmentFile=-/etc/romm-esde-bridge/backup.env
+ExecStart=/usr/bin/python3 /opt/romm-esde-bridge/backup_deck.py --host ${BACKUP_HOST} --destination ${BACKUP_DESTINATION} --layout history --label daily
+Nice=15
+IOSchedulingClass=idle
