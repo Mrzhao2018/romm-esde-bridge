@@ -140,6 +140,36 @@ class PC98SessionTests(unittest.TestCase):
             [(0x8, payload)],
         )
 
+    def test_save_state_does_not_upload_stale_file(self) -> None:
+        manager = PC98SessionManager.__new__(PC98SessionManager)
+        manager.ffmpeg_path = "/nonexistent/ffmpeg"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            session = make_session()
+            session.workdir = root
+            state_path, _ = manager._state_paths(root, session.rom_id)
+            state_path.parent.mkdir(parents=True)
+            state_path.write_bytes(b"old-state")
+
+            def save_command(_session: BrowserSession, command: str) -> None:
+                self.assertEqual(command, "SAVE_STATE")
+                state_path.write_bytes(b"new-state")
+
+            manager._send_command = save_command
+            manager._upload_state = lambda _session, path, _screenshot, slot=None: {
+                "uploaded": path.read_bytes(), "slot": slot,
+            }
+
+            result = manager.save_state(session)
+            self.assertEqual(result["uploaded"], b"new-state")
+
+    def test_request_log_redacts_session_ticket(self) -> None:
+        line = "GET /pc98/player.html?session=abc&ticket=private-value HTTP/1.1"
+        self.assertEqual(
+            BridgeHandler._redact_request_line(line),
+            "GET /pc98/player.html?session=abc&ticket=<redacted> HTTP/1.1",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

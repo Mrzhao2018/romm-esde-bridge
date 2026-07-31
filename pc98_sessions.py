@@ -367,14 +367,32 @@ class PC98SessionManager:
         self.max_sessions = max(1, max_sessions)
         self.idle_timeout = max(60, idle_timeout)
         self.disconnected_grace = max(
-            5, int(os.getenv("BRIDGE_PC98_DISCONNECTED_GRACE", "15"))
+            5, int(os.getenv("BRIDGE_PC98_DISCONNECTED_GRACE", "90"))
         )
         self._lock = threading.RLock()
+        self._display_lock = threading.Lock()
+        self._reserved_displays: set[int] = set()
         self._sessions: dict[str, BrowserSession] = {}
         self._creating = 0
         self._stop_event = threading.Event()
         self._reaper = threading.Thread(target=self._reap_loop, name="pc98-session-reaper", daemon=True)
         self._reaper.start()
+
+    def _reserve_display(self) -> int:
+        """Reserve an X display before starting Xvfb to avoid concurrent races."""
+        with self._display_lock:
+            for display in range(90, 191):
+                if display in self._reserved_displays:
+                    continue
+                if Path(f"/tmp/.X11-unix/X{display}").exists() or Path(f"/tmp/.X{display}-lock").exists():
+                    continue
+                self._reserved_displays.add(display)
+                return display
+        raise SessionError("No free Xvfb display is available")
+
+    def _release_display(self, display: int) -> None:
+        with self._display_lock:
+            self._reserved_displays.discard(display)
 
     def _load_manifest(self) -> dict[str, Any]:
         try:
@@ -781,49 +799,49 @@ class PC98SessionManager:
             if not Path(executable).is_file() and shutil.which(executable) is None:
                 raise SessionError(f"Session dependency is unavailable: {executable}")
 
-        display = 90
-        while Path(f"/tmp/.X11-unix/X{display}").exists() or Path(f"/tmp/.X{display}-lock").exists():
-            display += 1
-            if display > 190:
-                raise SessionError("No free Xvfb display is available")
-        command_port = free_local_port()
-        vnc_port = free_local_port()
-        websocket_port = free_local_port()
-        bios_dir = workdir / "bios"
-        save_dir = workdir / "saves"
-        state_dir = workdir / "states"
-        capture_dir = workdir / "captures"
-        config_dir = workdir / "config"
-        for path in (bios_dir, save_dir, state_dir, capture_dir, config_dir):
-            path.mkdir(parents=True, exist_ok=True)
-        config = (
-            f'video_driver = "gl"\n'
-            f'video_fullscreen = "true"\n'
-            f'video_windowed_fullscreen = "false"\n'
-            f'video_width = "640"\nvideo_height = "400"\n'
-            f'video_vsync = "true"\nvideo_threaded = "false"\n'
-            f'audio_driver = "pipewire"\naudio_out_rate = "48000"\naudio_latency = "64"\n'
-            f'input_driver = "x"\n'
-            f'system_directory = "{bios_dir}"\n'
-            f'savefile_directory = "{save_dir}"\n'
-            f'savestate_directory = "{state_dir}"\n'
-            f'screenshot_directory = "{capture_dir}"\n'
-            f'network_cmd_enable = "true"\nnetwork_cmd_port = "{command_port}"\n'
-            f'config_save_on_exit = "false"\nsave_on_exit = "false"\n'
-            f'savestate_auto_load = "true"\nsavestate_auto_save = "true"\n'
-            f'savestate_file_compression = "true"\nsavestate_thumbnail_enable = "true"\n'
-            f'quit_on_close_content = "true"\n'
-        ).encode()
-        atomic_write(config_dir / "retroarch.cfg", config)
-        core_options_path = (
-            config_dir / "retroarch" / "config" / CORE_STATE_DIRECTORY
-            / f"{CORE_STATE_DIRECTORY}.opt"
-        )
-        core_options = "\n".join(
-            f'{key} = "{value}"' for key, value in NP2KAI_CORE_OPTIONS.items()
-        ) + "\n"
-        atomic_write(core_options_path, core_options.encode())
-        log_handle = (workdir / "session.log").open("ab")
+        display = self._reserve_display()
+        try:
+            command_port = free_local_port()
+            vnc_port = free_local_port()
+            websocket_port = free_local_port()
+            bios_dir = workdir / "bios"
+            save_dir = workdir / "saves"
+            state_dir = workdir / "states"
+            capture_dir = workdir / "captures"
+            config_dir = workdir / "config"
+            for path in (bios_dir, save_dir, state_dir, capture_dir, config_dir):
+                path.mkdir(parents=True, exist_ok=True)
+            config = (
+                f'video_driver = "gl"\n'
+                f'video_fullscreen = "true"\n'
+                f'video_windowed_fullscreen = "false"\n'
+                f'video_width = "640"\nvideo_height = "400"\n'
+                f'video_vsync = "true"\nvideo_threaded = "false"\n'
+                f'audio_driver = "pipewire"\naudio_out_rate = "48000"\naudio_latency = "64"\n'
+                f'input_driver = "x"\n'
+                f'system_directory = "{bios_dir}"\n'
+                f'savefile_directory = "{save_dir}"\n'
+                f'savestate_directory = "{state_dir}"\n'
+                f'screenshot_directory = "{capture_dir}"\n'
+                f'network_cmd_enable = "true"\nnetwork_cmd_port = "{command_port}"\n'
+                f'config_save_on_exit = "false"\nsave_on_exit = "false"\n'
+                f'savestate_auto_load = "true"\nsavestate_auto_save = "true"\n'
+                f'savestate_file_compression = "true"\nsavestate_thumbnail_enable = "true"\n'
+                f'quit_on_close_content = "true"\n'
+            ).encode()
+            atomic_write(config_dir / "retroarch.cfg", config)
+            core_options_path = (
+                config_dir / "retroarch" / "config" / CORE_STATE_DIRECTORY
+                / f"{CORE_STATE_DIRECTORY}.opt"
+            )
+            core_options = "\n".join(
+                f'{key} = "{value}"' for key, value in NP2KAI_CORE_OPTIONS.items()
+            ) + "\n"
+            atomic_write(core_options_path, core_options.encode())
+            log_handle = (workdir / "session.log").open("ab")
+        except Exception:
+            self._release_display(display)
+            raise
         env = os.environ.copy()
         env.update({
             "DISPLAY": f":{display}",
@@ -876,6 +894,7 @@ class PC98SessionManager:
             terminate_process(x11vnc)
             terminate_process(retroarch)
             terminate_process(xvfb)
+            self._release_display(display)
             log_handle.close()
             raise
 
@@ -891,7 +910,9 @@ class PC98SessionManager:
     ) -> BrowserSession:
         with self._lock:
             if len(self._sessions) + self._creating >= self.max_sessions:
-                raise SessionError("Bridge 当前最多同时运行两个 PC-98 会话")
+                raise SessionError(
+                    f"Bridge 当前最多同时运行 {self.max_sessions} 个 PC-98 会话"
+                )
             self._creating += 1
         session_id = secrets.token_hex(16)
         workdir = self.session_dir / session_id
@@ -965,6 +986,7 @@ class PC98SessionManager:
             if started is not None:
                 for process in reversed(started[4:8]):
                     terminate_process(process)
+                self._release_display(int(started[0]))
                 log_handle = started[8]
                 if log_handle:
                     with contextlib.suppress(Exception):
@@ -987,6 +1009,36 @@ class PC98SessionManager:
     def _find_state_path(self, session: BrowserSession) -> Path | None:
         state_path, _ = self._state_paths(session.workdir, session.rom_id)
         return state_path if state_path.is_file() else None
+
+    @staticmethod
+    def _state_signature(path: Path) -> tuple[int, int, int] | None:
+        try:
+            metadata = path.stat()
+        except FileNotFoundError:
+            return None
+        return metadata.st_mtime_ns, metadata.st_ctime_ns, metadata.st_size
+
+    @classmethod
+    def _wait_for_new_state(
+        cls,
+        path: Path,
+        previous: tuple[int, int, int] | None,
+        timeout: float = 12,
+    ) -> Path | None:
+        """Wait until RetroArch replaces the state instead of reusing an old one."""
+        deadline = time.monotonic() + timeout
+        stable_signature: tuple[int, int, int] | None = None
+        stable_since = 0.0
+        while time.monotonic() < deadline:
+            signature = cls._state_signature(path)
+            if signature is not None and signature != previous:
+                if signature != stable_signature:
+                    stable_signature = signature
+                    stable_since = time.monotonic()
+                elif time.monotonic() - stable_since >= 0.1:
+                    return path
+            time.sleep(0.1)
+        return None
 
     def _capture_screenshot(self, session: BrowserSession, target: Path) -> None:
         if shutil.which(self.ffmpeg_path) is None and not Path(self.ffmpeg_path).is_file():
@@ -1060,15 +1112,12 @@ class PC98SessionManager:
 
     def save_state(self, session: BrowserSession, slot: Any = None) -> dict[str, Any]:
         with session.operation_lock:
-            if session.process_alive():
-                self._send_command(session, "SAVE_STATE")
-            state_path = None
-            deadline = time.monotonic() + 12
-            while time.monotonic() < deadline:
-                state_path = self._find_state_path(session)
-                if state_path:
-                    break
-                time.sleep(0.1)
+            if not session.emulator_alive():
+                raise SessionError("Browser session has ended")
+            state_path, _ = self._state_paths(session.workdir, session.rom_id)
+            previous = self._state_signature(state_path)
+            self._send_command(session, "SAVE_STATE")
+            state_path = self._wait_for_new_state(state_path, previous)
             if not state_path:
                 raise SessionError("RetroArch did not create the PC-98 state")
             auto_path, screenshot = self._materialize_auto_state(session, state_path)
@@ -1248,6 +1297,7 @@ class PC98SessionManager:
                 terminate_process(session.x11vnc)
                 terminate_process(session.retroarch)
                 terminate_process(session.xvfb)
+                self._release_display(session.display)
                 if session.log_handle:
                     with contextlib.suppress(Exception):
                         session.log_handle.close()

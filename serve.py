@@ -42,6 +42,22 @@ class BridgeHandler(SimpleHTTPRequestHandler):
         "assets.read", "assets.write", "roms.user.read", "roms.user.write",
     ]
 
+    @staticmethod
+    def _redact_request_line(value: str) -> str:
+        return re.sub(
+            r"([?&](?:ticket|access_token)=)[^&\s]*",
+            r"\1<redacted>",
+            value,
+            flags=re.IGNORECASE,
+        )
+
+    def log_message(self, format: str, *args: Any) -> None:
+        # Player URLs and websocket URLs carry a session capability in the
+        # query string. Keep it out of journald and reverse-proxy access logs.
+        if args and isinstance(args[0], str):
+            args = (self._redact_request_line(args[0]), *args[1:])
+        super().log_message(format, *args)
+
     @property
     def session_manager(self) -> PC98SessionManager:
         manager = getattr(self.server, "session_manager", None)
@@ -166,6 +182,8 @@ class BridgeHandler(SimpleHTTPRequestHandler):
             status = 401
         elif "not found" in lowered:
             status = 404
+        elif "ended" in lowered:
+            status = 410
         else:
             status = 409 if "最多同时" in message or "locked" in message.lower() else 400
         self._json_response(status, {"error": message})
@@ -540,6 +558,7 @@ class BridgeHandler(SimpleHTTPRequestHandler):
         )
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
