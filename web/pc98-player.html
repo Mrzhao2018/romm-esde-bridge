@@ -20,12 +20,26 @@
     .screen-panel { position:relative; display:grid; place-items:center; min-height:calc(min(70vw, 920px) * .625); padding:12px; border:1px solid var(--line); background:#050707 }
     #screen { display:block; width:min(100%, 920px); aspect-ratio:8 / 5; min-height:0; background:#000; outline:0 }
     #screen canvas { display:block; width:100%; height:100%; image-rendering:pixelated; outline:0 }
-    .screen-message { position:absolute; inset:12px; display:grid; place-items:center; padding:20px; color:var(--muted); background:#000c; text-align:center; pointer-events:none }
+    .screen-message { position:absolute; inset:12px; z-index:3; display:grid; place-items:center; padding:20px; color:var(--muted); background:#000c; text-align:center; pointer-events:none }
     .screen-message.error { color:var(--danger) }
     .screen-message[hidden] { display:none }
+    .translation-overlay { position:absolute; z-index:2; pointer-events:none }
+    .translation-overlay[hidden] { display:none }
+    .translation-region { position:absolute; overflow:hidden; min-width:22px; min-height:18px; padding:3px 5px; border:1px solid var(--accent); color:#071313; background:#bceee3e8; font-size:12px; line-height:1.25; text-shadow:none; overflow-wrap:anywhere }
+    .translation-panel { position:absolute; z-index:4; right:12px; bottom:12px; display:flex; width:min(430px,calc(100% - 24px)); max-height:72%; flex-direction:column; border:1px solid var(--line); color:var(--text); background:#101718f5; box-shadow:0 12px 40px #000b }
+    .translation-panel[hidden] { display:none }
+    .translation-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-bottom:1px solid var(--line); color:var(--amber); font-weight:700 }
+    .translation-close { width:28px; height:28px; border:1px solid var(--line); border-radius:4px; color:var(--text); background:transparent; font-size:18px; line-height:1 }
+    .translation-summary { padding:10px 12px 0; color:var(--muted); font-size:12px }
+    .translation-list { display:grid; gap:8px; overflow:auto; padding:10px 12px }
+    .translation-item { padding:8px; border:1px solid var(--line); background:var(--panel2); font-size:12px }
+    .translation-item .original { color:var(--muted); margin-bottom:3px }
+    .translation-item .translated { color:var(--text); font-weight:700 }
+    .translation-actions { display:flex; gap:7px; padding:10px 12px; border-top:1px solid var(--line) }
     .screen-panel:fullscreen { width:100vw; height:100vh; min-height:100vh; padding:0; border:0; background:#000 }
     .screen-panel:fullscreen #screen { width:min(100vw,160vh); height:min(100vh,62.5vw); max-width:none; aspect-ratio:8 / 5 }
     .screen-panel:fullscreen .screen-message { inset:0 }
+    .screen-panel:fullscreen .translation-panel { right:20px; bottom:20px; width:min(460px,calc(100% - 40px)) }
     .side { display:flex; flex-direction:column; gap:12px } .panel { padding:15px; border:1px solid var(--line); background:var(--panel) }
     .panel h2 { margin:0 0 12px; color:var(--amber); font-size:13px; letter-spacing:.02em } .panel p { margin:0; color:var(--muted); font-size:12px }
     .disk-list { display:grid; gap:7px } .disk { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; padding:9px; border:1px solid var(--line); background:var(--panel2); font-size:12px }
@@ -41,10 +55,10 @@
   <div class="app">
     <header class="bar">
       <div class="title"><h1 id="title">PC-98 Session</h1><div class="meta" id="session-meta">Connecting...</div></div>
-      <div class="actions"><button class="btn" id="audio" type="button">启用声音</button><button class="btn" id="fullscreen" type="button" title="全屏显示游戏画面"><span aria-hidden="true">⛶</span> 全屏</button><button class="btn" id="pause" type="button">暂停</button><button class="btn" id="reset" type="button">重置</button><button class="btn danger" id="stop" type="button">退出会话</button></div>
+      <div class="actions"><button class="btn" id="audio" type="button">启用声音</button><button class="btn" id="translate" type="button" title="翻译当前游戏画面"><span aria-hidden="true">文</span> 翻译 <small>F8</small></button><button class="btn" id="fullscreen" type="button" title="全屏显示游戏画面"><span aria-hidden="true">⛶</span> 全屏</button><button class="btn" id="pause" type="button">暂停</button><button class="btn" id="reset" type="button">重置</button><button class="btn danger" id="stop" type="button">退出会话</button></div>
     </header>
     <main class="stage">
-      <section class="screen-panel"><div id="screen" tabindex="0" aria-label="PC-98 screen"></div><div class="screen-message" id="screen-message" role="status">正在连接画面...</div></section>
+      <section class="screen-panel"><div id="screen" tabindex="0" aria-label="PC-98 screen"></div><div class="translation-overlay" id="translation-overlay" hidden></div><div class="translation-panel" id="translation-panel" hidden><div class="translation-head"><span>画面翻译</span><button class="translation-close" id="translation-close" type="button" aria-label="关闭翻译">&times;</button></div><div class="translation-summary" id="translation-summary"></div><div class="translation-list" id="translation-list"></div><div class="translation-actions"><button class="btn primary" id="translation-resume" type="button">继续游戏</button><button class="btn" id="translation-again" type="button">重新翻译</button></div></div><div class="screen-message" id="screen-message" role="status">正在连接画面...</div></section>
       <aside class="side">
         <section class="panel"><h2>磁盘控制</h2><div class="disk-list" id="disks"></div><button class="btn" id="eject" type="button" style="margin-top:9px;width:100%">弹出当前磁盘</button></section>
         <section class="panel"><h2>存档</h2><div class="actions"><button class="btn primary" id="save-state" type="button">保存到 RomM</button><button class="btn" id="load-state" type="button">读取 RomM</button></div><p>启动时自动读取，退出会话时自动回传；也可以在这里手动同步。</p></section>
@@ -62,6 +76,16 @@
     const token = () => localStorage.getItem("romm-esde-browser-token") || "";
     const status = document.getElementById("status");
     const screenMessage = document.getElementById("screen-message");
+    const screenPanel = document.querySelector(".screen-panel");
+    const screen = document.getElementById("screen");
+    const translationButton = document.getElementById("translate");
+    const translationOverlay = document.getElementById("translation-overlay");
+    const translationPanel = document.getElementById("translation-panel");
+    const translationSummary = document.getElementById("translation-summary");
+    const translationList = document.getElementById("translation-list");
+    const translationClose = document.getElementById("translation-close");
+    const translationResume = document.getElementById("translation-resume");
+    const translationAgain = document.getElementById("translation-again");
     let session = null;
     let rfb = null;
     let videoRetryTimer = null;
@@ -72,6 +96,11 @@
     let actionBusy = false;
     let pageStopping = false;
     let sessionInvalid = false;
+    let translationBusy = false;
+    let translationPausedByUs = false;
+    let latestTranslation = null;
+    let translationImageCache = "";
+    let translationResultCache = null;
     const fullscreenButton = document.getElementById("fullscreen");
     let audioContext = null;
     let audioSocket = null;
@@ -125,6 +154,105 @@
       finally { actionBusy = false; setActionBusy(false); }
     }
     async function insertDisk(slot) { await action("insert", { slot }); }
+    const wait = (milliseconds) => new Promise(resolve => setTimeout(resolve, milliseconds));
+    function getScreenCanvas() {
+      const canvas = screen.querySelector("canvas");
+      if (!canvas || !canvas.width || !canvas.height) throw new Error("游戏画面尚未连接");
+      return canvas;
+    }
+    function captureScreen() {
+      try { return getScreenCanvas().toDataURL("image/png"); }
+      catch (_) { throw new Error("当前浏览器无法读取游戏画面"); }
+    }
+    function syncTranslationOverlay() {
+      if (translationOverlay.hidden) return;
+      const screenRect = screen.getBoundingClientRect();
+      const panelRect = screenPanel.getBoundingClientRect();
+      if (!screenRect.width || !screenRect.height) return;
+      translationOverlay.style.left = `${screenRect.left - panelRect.left}px`;
+      translationOverlay.style.top = `${screenRect.top - panelRect.top}px`;
+      translationOverlay.style.width = `${screenRect.width}px`;
+      translationOverlay.style.height = `${screenRect.height}px`;
+    }
+    function renderTranslation(result) {
+      latestTranslation = result;
+      const regions = Array.isArray(result.regions) ? result.regions : [];
+      const imageWidth = Number(result.image_width) || 640;
+      const imageHeight = Number(result.image_height) || 400;
+      translationSummary.textContent = result.summary || (regions.length ? `识别到 ${regions.length} 个文本区域` : "没有识别到可翻译文字");
+      translationList.replaceChildren();
+      translationOverlay.replaceChildren();
+      for (const region of regions) {
+        const item = document.createElement("div"); item.className = "translation-item";
+        const original = document.createElement("div"); original.className = "original"; original.textContent = region.original || "日文";
+        const translated = document.createElement("div"); translated.className = "translated"; translated.textContent = region.translation || "";
+        item.append(original, translated); translationList.append(item);
+        const box = document.createElement("div"); box.className = "translation-region"; box.textContent = region.translation || ""; box.title = region.original || "";
+        const x = Math.max(0, Math.min(Number(region.x) || 0, imageWidth));
+        const y = Math.max(0, Math.min(Number(region.y) || 0, imageHeight));
+        const width = Math.max(1, Math.min(Number(region.width) || 1, imageWidth - x));
+        const height = Math.max(1, Math.min(Number(region.height) || 1, imageHeight - y));
+        box.style.left = `${x / imageWidth * 100}%`; box.style.top = `${y / imageHeight * 100}%`;
+        box.style.width = `${width / imageWidth * 100}%`; box.style.height = `${height / imageHeight * 100}%`;
+        translationOverlay.append(box);
+      }
+      translationOverlay.hidden = !regions.length;
+      translationPanel.hidden = false;
+      translationClose.disabled = false; translationResume.disabled = false; translationAgain.disabled = false;
+      syncTranslationOverlay();
+    }
+    function showTranslationLoading() {
+      translationSummary.textContent = "正在请求视觉模型...";
+      translationList.replaceChildren(); translationOverlay.replaceChildren(); translationOverlay.hidden = true;
+      translationPanel.hidden = false;
+      translationClose.disabled = true; translationResume.disabled = true; translationAgain.disabled = true;
+    }
+    function hideTranslation() {
+      latestTranslation = null; translationPanel.hidden = true; translationOverlay.hidden = true;
+      translationList.replaceChildren(); translationOverlay.replaceChildren();
+    }
+    async function resumeTranslationGame() {
+      const shouldResume = translationPausedByUs;
+      translationPausedByUs = false; hideTranslation();
+      if (!shouldResume || !session?.paused || pageStopping) return;
+      setStatus("正在继续游戏...");
+      try {
+        session = await api(`/api/browser/sessions/${sessionId}/resume`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        renderSession(); setStatus("");
+      } catch (error) { setStatus(error.message, true); }
+    }
+    async function translateCurrentScreen() {
+      if (translationBusy || pageStopping || sessionInvalid) return;
+      if (!session) { setStatus("游戏画面尚未连接", true); return; }
+      if (actionBusy) { setStatus("请等待当前操作完成", true); return; }
+      translationBusy = true; translationButton.disabled = true; showTranslationLoading(); setStatus("正在准备截图翻译...");
+      try {
+        if (!session.paused) {
+          session = await api(`/api/browser/sessions/${sessionId}/pause`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+          translationPausedByUs = true; renderSession(); await wait(160);
+        }
+        const image = captureScreen();
+        if (image === translationImageCache && translationResultCache) {
+          renderTranslation(translationResultCache); setStatus("已使用相同画面的翻译缓存"); return;
+        }
+        const result = await api(`/api/browser/sessions/${sessionId}/translate`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image, target_language: "zh-CN" }),
+        });
+        translationImageCache = image; translationResultCache = result;
+        renderTranslation(result); setStatus(result.regions?.length ? "翻译完成" : "未识别到可翻译文字");
+      } catch (error) {
+        if (error?.status === 401 || error?.status === 404 || error?.status === 410) sessionInvalid = true;
+        if (translationPausedByUs) {
+          try {
+            session = await api(`/api/browser/sessions/${sessionId}/resume`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+            renderSession();
+          } catch (_) { /* Keep the original translation error visible. */ }
+          translationPausedByUs = false;
+        }
+        hideTranslation(); setStatus(error.message, true);
+      } finally { translationBusy = false; translationButton.disabled = false; }
+    }
     function enqueueAudio(data) {
       if (!audioContext) return;
       const incoming = new Uint8Array(data);
@@ -202,6 +330,7 @@
       fullscreenButton.innerHTML = `<span aria-hidden="true">⛶</span> ${active ? "退出全屏" : "全屏"}`;
       fullscreenButton.title = active ? "退出全屏显示" : "全屏显示游戏画面";
       fullscreenButton.setAttribute("aria-label", fullscreenButton.title);
+      syncTranslationOverlay();
     }
     async function toggleFullscreen() {
       const target = document.querySelector(".screen-panel");
@@ -223,6 +352,15 @@
     document.addEventListener("webkitfullscreenchange", updateFullscreenButton);
     updateFullscreenButton();
     document.getElementById("audio").addEventListener("click", () => { if (audioSocket) stopAudio(); else void startAudio(); });
+    translationButton.addEventListener("click", () => { void translateCurrentScreen(); });
+    translationClose.addEventListener("click", () => { void resumeTranslationGame(); });
+    translationResume.addEventListener("click", () => { void resumeTranslationGame(); });
+    translationAgain.addEventListener("click", () => { void translateCurrentScreen(); });
+    window.addEventListener("keydown", (event) => {
+      if (event.key !== "F8") return;
+      event.preventDefault(); event.stopPropagation(); void translateCurrentScreen();
+    }, true);
+    window.addEventListener("resize", syncTranslationOverlay);
     document.getElementById("screen").addEventListener("pointerdown", () => { void startAudio(); }, { once: true });
     document.getElementById("pause").addEventListener("click", () => action(session?.paused ? "resume" : "pause"));
     document.getElementById("reset").addEventListener("click", () => action("reset"));

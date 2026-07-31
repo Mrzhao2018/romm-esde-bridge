@@ -24,6 +24,14 @@ from pathlib import Path
 from typing import Any
 
 from pc98_sessions import PC98SessionManager, SessionError, UnsupportedFeatureError, terminate_process
+from vision_translate import (
+    ALLOWED_MIME_TYPES,
+    MAX_IMAGE_BYTES,
+    TranslationError,
+    TranslationProviderError,
+    TranslationUnavailableError,
+    VisionTranslator,
+)
 
 
 class BridgeHandler(SimpleHTTPRequestHandler):
@@ -37,6 +45,7 @@ class BridgeHandler(SimpleHTTPRequestHandler):
     )
     browser_socket_path = re.compile(r"^/api/browser/sessions/([0-9a-f]{32})/socket$")
     browser_audio_path = re.compile(r"^/api/browser/sessions/([0-9a-f]{32})/audio$")
+    browser_translate_path = re.compile(r"^/api/browser/sessions/([0-9a-f]{32})/translate$")
     browser_scopes = [
         "me.read", "roms.read", "firmware.read", "devices.read", "devices.write",
         "assets.read", "assets.write", "roms.user.read", "roms.user.write",
@@ -64,6 +73,13 @@ class BridgeHandler(SimpleHTTPRequestHandler):
         if manager is None:
             raise RuntimeError("PC-98 session manager is not configured")
         return manager
+
+    @property
+    def vision_translator(self) -> VisionTranslator:
+        translator = getattr(self.server, "vision_translator", None)
+        if translator is None:
+            raise RuntimeError("Vision translator is not configured")
+        return translator
 
     @property
     def romm_api_url(self) -> str:
@@ -99,6 +115,26 @@ class BridgeHandler(SimpleHTTPRequestHandler):
         if not isinstance(value, dict):
             raise SessionError("JSON object required")
         return value
+
+    def _translation_request(self) -> tuple[bytes, str, str]:
+        payload = self._body(3 * 1024 * 1024)
+        image_data = str(payload.get("image") or "")
+        match = re.fullmatch(
+            r"data:(image/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)",
+            image_data,
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            raise SessionError("translation image must be a base64 PNG, JPEG or WebP data URL")
+        try:
+            image = base64.b64decode(match.group(2), validate=True)
+        except (ValueError, TypeError) as exc:
+            raise SessionError("translation image is not valid base64") from exc
+        mime_type = match.group(1).lower()
+        if mime_type not in ALLOWED_MIME_TYPES or not image or len(image) > MAX_IMAGE_BYTES:
+            raise SessionError("translation image is too large or uses an unsupported format")
+        target_language = str(payload.get("target_language") or "zh-CN")[:40]
+        return image, mime_type, target_language
 
     def _token(self, *, respond: bool = True) -> str | None:
         authorization = self.headers.get("Authorization", "")
@@ -178,6 +214,10 @@ class BridgeHandler(SimpleHTTPRequestHandler):
         lowered = message.casefold()
         if isinstance(exc, UnsupportedFeatureError):
             status = 501
+        elif isinstance(exc, TranslationUnavailableError):
+            status = 503
+        elif isinstance(exc, TranslationProviderError):
+            status = 502
         elif "ticket" in lowered or "token" in lowered or "bearer" in lowered:
             status = 401
         elif "not found" in lowered:
@@ -432,6 +472,20 @@ class BridgeHandler(SimpleHTTPRequestHandler):
             except (KeyError, TypeError, ValueError, SessionError) as exc:
                 self._session_error(exc)
             return
+        translation_match = self.browser_translate_path.match(path)
+        if translation_match:
+            try:
+                session = self._authorized_session(translation_match.group(1))
+                if session is None:
+                    return
+                image, mime_type, target_language = self._translation_request()
+                with session.operation_lock:
+                    result = self.vision_translator.translate(image, mime_type, target_language)
+                    session.touch()
+                self._json_response(200, result)
+            except (SessionError, TranslationError, TypeError, ValueError) as exc:
+                self._session_error(exc)
+            return
         control = self.browser_control_path.match(path)
         if control:
             session_id, action = control.groups()
@@ -641,6 +695,7 @@ def main() -> None:
     server.romm_api_url = os.getenv("ROMM_API_URL", "http://127.0.0.1:8080")
     server.romm_public_url = os.getenv("ROMM_PUBLIC_URL", server.romm_api_url)
     server.bridge_public_url = os.getenv("BRIDGE_PUBLIC_URL", f"http://127.0.0.1:{args.port}")
+    server.vision_translator = VisionTranslator.from_env()
     server.session_manager = PC98SessionManager(
         directory,
         server.romm_api_url,

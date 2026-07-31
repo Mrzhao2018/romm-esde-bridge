@@ -50,6 +50,26 @@ sudo chmod 0600 /etc/romm-esde-bridge/server-token
 
 Never place this token in Git, a URL, an installer bundle or `catalog.json`.
 
+## Optional browser screenshot translation
+
+The PC-98 browser player can pause the game, send its 640x400 screenshot to a
+vision model and display Simplified Chinese translations over the game screen.
+The feature is disabled until all translation settings are configured. Put the
+provider key in a separate mode-0600 file and set these private environment
+values in `bridge.env`:
+
+```text
+BRIDGE_TRANSLATION_BASE_URL=https://your-proxy.example/v1
+BRIDGE_TRANSLATION_API_KEY_FILE=/etc/romm-esde-bridge/translation-api-key
+BRIDGE_TRANSLATION_MODEL=gemini-3-flash
+BRIDGE_TRANSLATION_API_STYLE=openai
+```
+
+`openai` sends an OpenAI-compatible multimodal request. Set
+`BRIDGE_TRANSLATION_API_STYLE=gemini` when the proxy exposes native Gemini
+`generateContent`. The provider key is used only by the Bridge and is never
+sent to the browser or RomM.
+
 ## 3. Start services
 
 ```bash
