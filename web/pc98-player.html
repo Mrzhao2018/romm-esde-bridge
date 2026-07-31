@@ -23,6 +23,9 @@
     .screen-message { position:absolute; inset:12px; display:grid; place-items:center; padding:20px; color:var(--muted); background:#000c; text-align:center; pointer-events:none }
     .screen-message.error { color:var(--danger) }
     .screen-message[hidden] { display:none }
+    .screen-panel:fullscreen { width:100vw; height:100vh; min-height:100vh; padding:0; border:0; background:#000 }
+    .screen-panel:fullscreen #screen { width:min(100vw,160vh); height:min(100vh,62.5vw); max-width:none; aspect-ratio:8 / 5 }
+    .screen-panel:fullscreen .screen-message { inset:0 }
     .side { display:flex; flex-direction:column; gap:12px } .panel { padding:15px; border:1px solid var(--line); background:var(--panel) }
     .panel h2 { margin:0 0 12px; color:var(--amber); font-size:13px; letter-spacing:.02em } .panel p { margin:0; color:var(--muted); font-size:12px }
     .disk-list { display:grid; gap:7px } .disk { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; padding:9px; border:1px solid var(--line); background:var(--panel2); font-size:12px }
@@ -38,7 +41,7 @@
   <div class="app">
     <header class="bar">
       <div class="title"><h1 id="title">PC-98 Session</h1><div class="meta" id="session-meta">Connecting...</div></div>
-      <div class="actions"><button class="btn" id="audio" type="button">启用声音</button><button class="btn" id="pause" type="button">暂停</button><button class="btn" id="reset" type="button">重置</button><button class="btn danger" id="stop" type="button">退出会话</button></div>
+      <div class="actions"><button class="btn" id="audio" type="button">启用声音</button><button class="btn" id="fullscreen" type="button" title="全屏显示游戏画面"><span aria-hidden="true">⛶</span> 全屏</button><button class="btn" id="pause" type="button">暂停</button><button class="btn" id="reset" type="button">重置</button><button class="btn danger" id="stop" type="button">退出会话</button></div>
     </header>
     <main class="stage">
       <section class="screen-panel"><div id="screen" tabindex="0" aria-label="PC-98 screen"></div><div class="screen-message" id="screen-message" role="status">正在连接画面...</div></section>
@@ -69,6 +72,7 @@
     let actionBusy = false;
     let pageStopping = false;
     let sessionInvalid = false;
+    const fullscreenButton = document.getElementById("fullscreen");
     let audioContext = null;
     let audioSocket = null;
     let audioStarting = null;
@@ -189,6 +193,35 @@
       })().catch((error) => { setStatus(error.message, true); return null; }).finally(() => { audioStarting = null; });
       return audioStarting;
     }
+    function isFullscreen() {
+      return document.fullscreenElement === document.querySelector(".screen-panel")
+        || document.webkitFullscreenElement === document.querySelector(".screen-panel");
+    }
+    function updateFullscreenButton() {
+      const active = isFullscreen();
+      fullscreenButton.innerHTML = `<span aria-hidden="true">⛶</span> ${active ? "退出全屏" : "全屏"}`;
+      fullscreenButton.title = active ? "退出全屏显示" : "全屏显示游戏画面";
+      fullscreenButton.setAttribute("aria-label", fullscreenButton.title);
+    }
+    async function toggleFullscreen() {
+      const target = document.querySelector(".screen-panel");
+      try {
+        if (isFullscreen()) {
+          if (document.exitFullscreen) await document.exitFullscreen();
+          else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        } else if (target.requestFullscreen) {
+          await target.requestFullscreen({ navigationUI: "hide" });
+        } else if (target.webkitRequestFullscreen) {
+          target.webkitRequestFullscreen();
+        } else {
+          throw new Error("此浏览器不支持全屏显示");
+        }
+      } catch (error) { setStatus(error.message || "全屏切换失败", true); }
+    }
+    fullscreenButton.addEventListener("click", () => { void toggleFullscreen(); });
+    document.addEventListener("fullscreenchange", updateFullscreenButton);
+    document.addEventListener("webkitfullscreenchange", updateFullscreenButton);
+    updateFullscreenButton();
     document.getElementById("audio").addEventListener("click", () => { if (audioSocket) stopAudio(); else void startAudio(); });
     document.getElementById("screen").addEventListener("pointerdown", () => { void startAudio(); }, { once: true });
     document.getElementById("pause").addEventListener("click", () => action(session?.paused ? "resume" : "pause"));
