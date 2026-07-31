@@ -25,7 +25,7 @@ from typing import Any
 from xml.etree import ElementTree as ET
 
 
-BRIDGE_VERSION = 3
+BRIDGE_VERSION = 4
 DEFAULT_API_URL = "http://127.0.0.1:8080"
 DEFAULT_PUBLIC_URL = "http://127.0.0.1:8080"
 DEFAULT_BRIDGE_PUBLIC_URL = "http://127.0.0.1:8090"
@@ -33,6 +33,7 @@ DEFAULT_TOKEN_FILE = "/etc/romm-esde-bridge/server-token"
 DEFAULT_OUTPUT_DIR = "/var/lib/romm-esde-bridge"
 DEFAULT_HOST_ROOT = "/srv/romm"
 EXTERNAL_URL_KEY = re.compile(r"(^url_|_url$|^url$)", re.IGNORECASE)
+DISK_SLOT_PATTERN = re.compile(r"(?i)(?:disk|disc)\s*([a-z]|\d+)")
 
 
 class RomMAPI:
@@ -148,6 +149,53 @@ def public_endpoint(public_url: str, path: str) -> str:
     return f"{public_url.rstrip('/')}{path}"
 
 
+def disk_slot_index(file_name: str) -> int:
+    """Return a zero-based disk slot inferred from a PC-98 file name."""
+    match = DISK_SLOT_PATTERN.search(file_name)
+    if not match:
+        return 0
+    value = match.group(1)
+    if value.isdigit():
+        return max(0, int(value) - 1)
+    return ord(value.upper()) - ord("A")
+
+
+def disk_descriptor(item: dict[str, Any], slot: int, role: str) -> dict[str, Any]:
+    return {
+        "slot": slot,
+        "role": role,
+        "file_id": item["id"],
+        "file_name": item["file_name"],
+        "file_size_bytes": item.get("file_size_bytes"),
+        "crc_hash": item.get("crc_hash"),
+        "md5_hash": item.get("md5_hash"),
+        "sha1_hash": item.get("sha1_hash"),
+        "hash_scope": item.get("hash_scope", "file"),
+    }
+
+
+def build_disk_options(
+    canonical_files: list[dict[str, Any]], alternate_files: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Group canonical disks and alternate dumps into selectable slots."""
+    options = [
+        {
+            "slot": index,
+            "canonical": disk_descriptor(item, index, "canonical"),
+            "alternates": [],
+        }
+        for index, item in enumerate(canonical_files)
+    ]
+    for item in alternate_files:
+        slot = disk_slot_index(str(item.get("file_name") or ""))
+        if slot >= len(options):
+            slot = 0
+        options[slot]["alternates"].append(
+            disk_descriptor(item, slot, "alternate")
+        )
+    return options
+
+
 def normalize_rom(
     rom: dict[str, Any],
     public_url: str,
@@ -182,6 +230,12 @@ def normalize_rom(
         }
         for item in files
     ]
+    disk_options = build_disk_options(canonical_files, alternate_files)
+    if rom.get("has_nested_single_file"):
+        for option in disk_options:
+            for descriptor in [option["canonical"], *(option.get("alternates") or [])]:
+                if str(descriptor.get("file_name") or "").casefold().endswith(".zip"):
+                    descriptor["hash_scope"] = "archive_single_member"
     screenshots = [
         metadata
         for path in (rom.get("merged_screenshots") or [])
@@ -217,6 +271,7 @@ def normalize_rom(
         ),
         "alternate_file_ids": [item["id"] for item in alternate_files],
         "alternate_file_names": [item["file_name"] for item in alternate_files],
+        "disk_options": disk_options,
         "file_downloads": file_downloads,
         "cover_small": local_asset_metadata(
             public_url, rom.get("path_cover_small"), host_root
@@ -568,6 +623,9 @@ def refresh(args: argparse.Namespace) -> None:
             "public_romm_collections": True,
             "client_user_overlay": True,
             "device_pairing": True,
+            "browser_pc98": True,
+            "browser_multidisk_control": True,
+            "browser_save_states": True,
             "save_state_sync": True,
             "play_sessions": True,
             "media_from_romm_assets": True,

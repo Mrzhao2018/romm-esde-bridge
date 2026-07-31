@@ -45,8 +45,10 @@ USER_FIELDS = ("playcount", "playtime", "lastplayed", "favorite", "hidden")
 CLIENT_VERSION = "5"
 SYSTEM_NAME = "romm-pc98"
 NP2KAI_DISK_EXTENSIONS = {
-    ".d98", ".98d", ".fdi", ".fdd", ".2hd", ".tfd", ".d88", ".88d",
-    ".hdm", ".xdf", ".dup", ".hdi", ".thd", ".nhd", ".hdd", ".hdn",
+    ".d88", ".88d", ".d98", ".98d", ".fdi", ".xdf", ".hdm", ".dup",
+    ".2hd", ".tfd", ".nfd", ".hd4", ".hd5", ".hd9", ".fdd", ".h01",
+    ".hdb", ".ddb", ".dd6", ".dcp", ".dcu", ".flp", ".img", ".ima",
+    ".bin", ".fim", ".thd", ".nhd", ".hdi", ".hdd", ".vhd", ".slh", ".hdn",
 }
 SYSTEM_XML = """  <system>
     <name>romm-pc98</name>

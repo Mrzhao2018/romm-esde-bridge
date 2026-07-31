@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>PC-98 Session</title>
+  <style>
+    :root { --bg:#090d0e; --panel:#121a1b; --panel2:#182324; --line:#2c3b3c; --text:#eef4f2; --muted:#9eafad; --accent:#70d5c2; --amber:#f2b86b; --danger:#f28c8c }
+    * { box-sizing:border-box } html,body { min-height:100%; margin:0 } body { color:var(--text); background:var(--bg); font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif }
+    button,select { font:inherit } button { color:inherit; cursor:pointer }
+    .app { width:min(1440px,calc(100% - 36px)); margin:auto; padding:18px 0 30px }
+    .bar { display:flex; align-items:center; justify-content:space-between; gap:16px; padding-bottom:14px; border-bottom:1px solid var(--line) }
+    .title { min-width:0 } h1 { margin:0; overflow:hidden; font-size:18px; text-overflow:ellipsis; white-space:nowrap } .meta { color:var(--muted); font-size:12px }
+    .actions { display:flex; flex-wrap:wrap; gap:7px; justify-content:flex-end }
+    .btn,.select { min-height:36px; padding:0 11px; border:1px solid var(--line); border-radius:5px; color:var(--text); background:var(--panel) }
+    .btn:hover { border-color:var(--accent); background:var(--panel2) } .btn.primary { border-color:#3d8d82; color:#071313; background:var(--accent) } .btn.warn { border-color:#8d6a3e; color:#17100a; background:var(--amber) } .btn.danger { color:#ffdada; background:#321b1c; border-color:#754242 }
+    .btn:disabled { opacity:.5; cursor:wait }
+    .stage { display:grid; grid-template-columns:minmax(0,1fr) 280px; gap:14px; padding-top:18px }
+    .screen-panel { display:grid; place-items:center; min-height:calc(min(70vw, 920px) * .625); padding:12px; border:1px solid var(--line); background:#050707 }
+    #screen { display:block; width:min(100%, 920px); aspect-ratio:8 / 5; min-height:0; background:#000; outline:0 }
+    #screen canvas { display:block; width:100%; height:100%; image-rendering:pixelated; outline:0 }
+    .side { display:flex; flex-direction:column; gap:12px } .panel { padding:15px; border:1px solid var(--line); background:var(--panel) }
+    .panel h2 { margin:0 0 12px; color:var(--amber); font-size:13px; letter-spacing:.02em } .panel p { margin:0; color:var(--muted); font-size:12px }
+    .disk-list { display:grid; gap:7px } .disk { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; padding:9px; border:1px solid var(--line); background:var(--panel2); font-size:12px }
+    .disk.current { border-color:var(--accent) } .disk small { display:block; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+    .mini { min-height:29px; padding:0 8px; border:1px solid var(--line); border-radius:4px; color:var(--text); background:#101718; font-size:12px }
+    .select { width:100%; padding:0 8px }
+    #status { min-height:23px; padding-top:11px; color:var(--muted); font-size:12px } #status.error { color:var(--danger) }
+    @media(max-width:900px){.stage{grid-template-columns:1fr}.screen-panel{min-height:0}.side{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.side .panel:last-child{grid-column:1/-1}}
+    @media(max-width:560px){.app{width:calc(100% - 20px);padding-top:10px}.bar{align-items:flex-start;flex-direction:column}.actions{justify-content:flex-start}.side{display:flex}.screen-panel{padding:4px}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="bar">
+      <div class="title"><h1 id="title">PC-98 Session</h1><div class="meta" id="session-meta">Connecting...</div></div>
+      <div class="actions"><button class="btn" id="audio" type="button">启用声音</button><button class="btn" id="pause" type="button">暂停</button><button class="btn" id="reset" type="button">重置</button><button class="btn danger" id="stop" type="button">退出会话</button></div>
+    </header>
+    <main class="stage">
+      <section class="screen-panel"><div id="screen" tabindex="0" aria-label="PC-98 screen"></div></section>
+      <aside class="side">
+        <section class="panel"><h2>磁盘控制</h2><div class="disk-list" id="disks"></div><button class="btn" id="eject" type="button" style="margin-top:9px;width:100%">弹出当前磁盘</button></section>
+        <section class="panel"><h2>存档</h2><div class="actions"><button class="btn primary" id="save-state" type="button">保存到 RomM</button><button class="btn" id="load-state" type="button">读取 RomM</button></div><p>启动时自动读取，退出会话时自动回传；也可以在这里手动同步。</p></section>
+        <section class="panel"><h2>输入</h2><p>点击画面后，键盘和鼠标输入会发送到服务器端 NP2Kai。</p></section>
+      </aside>
+    </main>
+    <div id="status"></div>
+  </div>
+  <script type="module">
+    import RFB from "/novnc/core/rfb.js";
+    const BRIDGE = "@@BRIDGE_URL@@";
+    const params = new URLSearchParams(location.search);
+    const sessionId = params.get("session") || "";
+    const ticket = params.get("ticket") || "";
+    const token = () => localStorage.getItem("romm-esde-browser-token") || "";
+    const status = document.getElementById("status");
+    let session = null;
+    let rfb = null;
+    let audioContext = null;
+    let audioSocket = null;
+    let audioStarting = null;
+    let audioNextTime = 0;
+    let audioRemainder = new Uint8Array(0);
+    const setStatus = (message, error = false) => { status.textContent = message || ""; status.classList.toggle("error", error); };
+    async function api(path, options = {}) {
+      const headers = { Accept: "application/json" };
+      if (token()) headers.Authorization = `Bearer ${token()}`;
+      if (ticket) headers["X-Session-Ticket"] = ticket;
+      Object.assign(headers, options.headers || {});
+      const response = await fetch(`${BRIDGE}${path}`, { ...options, headers });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `请求失败 (${response.status})`);
+      return data;
+    }
+    function renderSession() {
+      document.getElementById("title").textContent = session.name;
+      document.getElementById("session-meta").textContent = `${session.status} · RomM #${session.rom_id}`;
+      document.getElementById("pause").textContent = session.paused ? "继续" : "暂停";
+      document.getElementById("eject").textContent = session.tray_open ? "关闭托盘" : "弹出当前磁盘";
+      const box = document.getElementById("disks"); box.replaceChildren();
+      for (const disk of session.disks) {
+        const row = document.createElement("div"); row.className = `disk${disk.slot === session.current_disk && !session.tray_open ? " current" : ""}`;
+        const label = document.createElement("div"); label.textContent = `磁盘 ${disk.slot + 1}`; const name = document.createElement("small"); name.textContent = disk.file_name; label.append(name);
+        const button = document.createElement("button"); button.className = "mini"; button.textContent = disk.slot === session.current_disk && !session.tray_open ? "当前" : "插入"; button.disabled = disk.slot === session.current_disk && !session.tray_open; button.addEventListener("click", () => insertDisk(disk.slot));
+        row.append(label, button); box.append(row);
+      }
+    }
+    async function refresh() { session = await api(`/api/browser/sessions/${sessionId}`); renderSession(); }
+    async function action(name, body = {}) { setStatus("正在执行..."); try { const result = await api(`/api/browser/sessions/${sessionId}/${name}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (result.id === sessionId || result.status) { session = result; renderSession(); } setStatus(""); } catch (error) { setStatus(error.message, true); } }
+    async function insertDisk(slot) { await action("insert", { slot }); }
+    function enqueueAudio(data) {
+      if (!audioContext) return;
+      const incoming = new Uint8Array(data);
+      const combined = new Uint8Array(audioRemainder.length + incoming.length);
+      combined.set(audioRemainder); combined.set(incoming, audioRemainder.length);
+      const usable = combined.length - (combined.length % 4);
+      audioRemainder = combined.slice(usable);
+      if (!usable) return;
+      const pcm = new Int16Array(combined.buffer, combined.byteOffset, usable / 2);
+      const frames = pcm.length / 2;
+      const buffer = audioContext.createBuffer(2, frames, 48000);
+      const left = buffer.getChannelData(0); const right = buffer.getChannelData(1);
+      for (let index = 0; index < frames; index += 1) {
+        left[index] = pcm[index * 2] / 32768;
+        right[index] = pcm[index * 2 + 1] / 32768;
+      }
+      const source = audioContext.createBufferSource(); source.buffer = buffer; source.connect(audioContext.destination);
+      const start = Math.max(audioContext.currentTime + 0.02, audioNextTime);
+      source.start(start); audioNextTime = start + buffer.duration;
+    }
+    async function handleAudioMessage(event) {
+      if (event.data instanceof ArrayBuffer) { enqueueAudio(event.data); return; }
+      if (event.data && typeof event.data.arrayBuffer === "function") enqueueAudio(await event.data.arrayBuffer());
+    }
+    function stopAudio() {
+      if (audioSocket) { audioSocket.close(); audioSocket = null; }
+      audioRemainder = new Uint8Array(0); audioNextTime = 0;
+      if (audioContext) void audioContext.suspend();
+      document.getElementById("audio").textContent = "启用声音";
+    }
+    async function startAudio() {
+      if (audioSocket) return audioSocket;
+      if (audioStarting) return audioStarting;
+      if (!session?.audio_websocket_path) return null;
+      audioStarting = (async () => {
+        const AudioCtor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtor) throw new Error("此浏览器不支持声音播放");
+        audioContext = audioContext || new AudioCtor({ latencyHint: "interactive" });
+        await audioContext.resume();
+        const scheme = location.protocol === "https:" ? "wss" : "ws";
+        setStatus("正在连接声音...");
+        const socket = new WebSocket(`${scheme}://${location.host}${session.audio_websocket_path}?ticket=${encodeURIComponent(ticket)}`);
+        socket.binaryType = "arraybuffer";
+        socket.addEventListener("message", (event) => { void handleAudioMessage(event); });
+        socket.addEventListener("close", () => {
+          if (audioSocket === socket) { audioSocket = null; document.getElementById("audio").textContent = "启用声音"; }
+        });
+        await new Promise((resolve, reject) => {
+          socket.addEventListener("open", resolve, { once: true });
+          socket.addEventListener("error", () => reject(new Error("声音连接失败")), { once: true });
+        });
+        audioSocket = socket;
+        document.getElementById("audio").textContent = "关闭声音";
+        setStatus("声音已启用");
+        return socket;
+      })().catch((error) => { setStatus(error.message, true); return null; }).finally(() => { audioStarting = null; });
+      return audioStarting;
+    }
+    document.getElementById("audio").addEventListener("click", () => { if (audioSocket) stopAudio(); else void startAudio(); });
+    document.getElementById("screen").addEventListener("pointerdown", () => { void startAudio(); }, { once: true });
+    document.getElementById("pause").addEventListener("click", () => action(session?.paused ? "resume" : "pause"));
+    document.getElementById("reset").addEventListener("click", () => action("reset"));
+    document.getElementById("eject").addEventListener("click", () => action("eject"));
+    document.getElementById("save-state").addEventListener("click", () => action("save-state"));
+    document.getElementById("load-state").addEventListener("click", () => action("load-state"));
+    document.getElementById("stop").addEventListener("click", async () => { if (!confirm("退出当前 PC-98 会话？")) return; try { await api(`/api/browser/sessions/${sessionId}`, { method: "DELETE" }); location.href = `${BRIDGE}/pc98/`; } catch (error) { setStatus(error.message, true); } });
+    window.addEventListener("beforeunload", () => { /* The Bridge reaper cleans idle sessions after the page is closed. */ });
+    async function connect() {
+      if (!sessionId || !ticket) { setStatus("浏览器会话 ticket 缺失", true); return; }
+      try {
+        await refresh();
+        const scheme = location.protocol === "https:" ? "wss" : "ws";
+        const websocket = `${scheme}://${location.host}${session.websocket_path}?ticket=${encodeURIComponent(ticket)}`;
+        rfb = new RFB(document.getElementById("screen"), websocket);
+        rfb.scaleViewport = true; rfb.resizeSession = false; rfb.showDotCursor = true; rfb.focusOnClick = true;
+        rfb.addEventListener("connect", () => { setStatus(""); rfb.focus(); });
+        rfb.addEventListener("disconnect", () => setStatus("画面连接已断开", true));
+        rfb.addEventListener("credentialsrequired", () => setStatus("VNC 凭据配置错误", true));
+      } catch (error) { setStatus(error.message, true); }
+    }
+    connect();
+  </script>
+</body>
+</html>

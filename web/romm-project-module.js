@@ -73,4 +73,79 @@
 
   document.head.appendChild(style);
   document.body.append(button, modal);
+
+  const pc98Style = document.createElement("style");
+  pc98Style.textContent = `
+    #romm-esde-pc98-button {
+      position: fixed; left: 18px; bottom: 76px; z-index: 2147483001;
+      display: none; align-items: center; gap: 10px; min-height: 44px;
+      padding: 0 16px; border: 1px solid rgba(112, 213, 194, .48);
+      border-radius: 8px; color: #071313; background: #70d5c2;
+      box-shadow: 0 12px 34px rgba(0, 0, 0, .34);
+      font: 700 14px/1 system-ui, sans-serif; cursor: pointer;
+    }
+    #romm-esde-pc98-button[data-visible="true"] { display: flex; }
+    #romm-esde-pc98-button:hover { background: #9de8da; transform: translateY(-2px); }
+    #romm-esde-pc98-button svg { width: 20px; height: 20px; }
+    @media (max-width: 700px) {
+      #romm-esde-pc98-button { left: 12px; bottom: 68px; width: 46px; padding: 0; justify-content: center; }
+      #romm-esde-pc98-button span { display: none; }
+    }
+  `;
+  document.head.appendChild(pc98Style);
+
+  const pc98Button = document.createElement("button");
+  pc98Button.id = "romm-esde-pc98-button";
+  pc98Button.type = "button";
+  pc98Button.setAttribute("aria-label", "在浏览器中游玩 PC-98 游戏");
+  pc98Button.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="1.5"/><path d="M8 20h8M12 17v3"/></svg><span>浏览器游玩</span>`;
+  pc98Button.addEventListener("click", () => {
+    const romId = pc98Button.dataset.romId;
+    if (!romId) return;
+    const opened = window.open(`${bridgeUrl}/pc98/?rom=${encodeURIComponent(romId)}`, "_blank");
+    if (opened) opened.opener = null;
+  });
+  document.body.append(pc98Button);
+
+  let checkedRomId = null;
+  let checkedIsPc98 = false;
+  let checkInFlight = false;
+  const syncPc98Button = async () => {
+    const match = window.location.pathname.match(/^\/rom\/(\d+)(?:\/|$)/);
+    if (!match) {
+      pc98Button.dataset.visible = "false";
+      pc98Button.dataset.romId = "";
+      checkedRomId = null;
+      checkedIsPc98 = false;
+      return;
+    }
+    const romId = match[1];
+    pc98Button.dataset.romId = romId;
+    if (checkedRomId === romId) {
+      pc98Button.dataset.visible = checkedIsPc98 ? "true" : "false";
+      return;
+    }
+    if (checkInFlight) return;
+    checkInFlight = true;
+    try {
+      const response = await fetch(`/api/roms/${encodeURIComponent(romId)}/simple`, {
+        credentials: "same-origin", headers: { Accept: "application/json" },
+      });
+      const rom = response.ok ? await response.json() : null;
+      checkedRomId = romId;
+      checkedIsPc98 = rom?.platform_slug === "pc-9800-series";
+      pc98Button.dataset.visible = checkedIsPc98 ? "true" : "false";
+    } catch (_) {
+      checkedRomId = romId;
+      checkedIsPc98 = false;
+      pc98Button.dataset.visible = "false";
+    } finally {
+      checkInFlight = false;
+    }
+  };
+  const routeObserver = new MutationObserver(() => syncPc98Button());
+  routeObserver.observe(document.body, { childList: true, subtree: true });
+  window.addEventListener("popstate", syncPc98Button);
+  window.addEventListener("hashchange", syncPc98Button);
+  syncPc98Button();
 })();

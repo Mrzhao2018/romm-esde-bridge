@@ -111,6 +111,18 @@ def publish(output: Path, server_url: str, bridge_url: str) -> None:
         .replace("@@BRIDGE_URL@@", bridge_url.rstrip("/"))
     )
     atomic_write(output / "project/index.html", project_page.encode("utf-8"))
+    pc98_page = (
+        (ROOT / "web/pc98.html").read_text(encoding="utf-8")
+        .replace("@@ROMM_URL@@", server_url.rstrip("/"))
+        .replace("@@BRIDGE_URL@@", bridge_url.rstrip("/"))
+    )
+    atomic_write(output / "pc98/index.html", pc98_page.encode("utf-8"))
+    player_page = (
+        (ROOT / "web/pc98-player.html").read_text(encoding="utf-8")
+        .replace("@@ROMM_URL@@", server_url.rstrip("/"))
+        .replace("@@BRIDGE_URL@@", bridge_url.rstrip("/"))
+    )
+    atomic_write(output / "pc98/player.html", player_page.encode("utf-8"))
 
 
 def main() -> None:

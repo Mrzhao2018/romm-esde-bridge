@@ -88,6 +88,33 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(data["launch_strategy"], "direct_file")
         self.assertEqual(data["canonical_file_ids"], [99])
 
+    def test_nested_zip_marks_inner_hash_scope_for_browser_launch(self) -> None:
+        rom = {
+            "id": 32,
+            "platform_id": 283,
+            "platform_slug": "pc-9800-series",
+            "fs_name": "Nested Example",
+            "name": "Nested Example",
+            "has_nested_single_file": True,
+            "files": [{
+                "id": 100,
+                "file_name": "Nested Example.zip",
+                "file_size_bytes": 123,
+                "sha1_hash": "inner-sha1",
+                "md5_hash": "inner-md5",
+                "category": "game",
+            }],
+        }
+        data = bridge.normalize_rom(
+            rom,
+            "http://romm.invalid",
+            Path("/nonexistent"),
+        )["bridge"]
+        self.assertEqual(
+            data["disk_options"][0]["canonical"]["hash_scope"],
+            "archive_single_member",
+        )
+
     def test_asset_metadata_reports_local_size(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

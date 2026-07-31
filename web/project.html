@@ -26,7 +26,7 @@
   <div class="eyebrow">RomM · ES-DE Bridge</div>
   <h1>一个游戏库，多台设备，按需游玩。</h1>
   <p class="lead">RomM 是游戏与元数据的唯一来源；Bridge 把它转成 ES-DE 可用的目录，并负责设备配对、按需缓存、存档状态和个人标记同步。客户端不需要保存完整 ROM 库。</p>
-  <div class="actions"><a class="btn primary" href="@@ROMM_URL@@" target="_top">返回 RomM</a><a class="btn" href="@@BRIDGE_URL@@/health.json" target="_blank">Bridge 健康信息</a><a class="btn" href="@@BRIDGE_URL@@/catalog.json" target="_blank">目录原始数据</a></div>
+  <div class="actions"><a class="btn primary" href="@@BRIDGE_URL@@/pc98/">打开 PC-98 浏览器</a><a class="btn" href="@@ROMM_URL@@" target="_top">返回 RomM</a><a class="btn" href="@@BRIDGE_URL@@/health.json" target="_blank">Bridge 健康信息</a><a class="btn" href="@@BRIDGE_URL@@/catalog.json" target="_blank">目录原始数据</a></div>
 
   <div class="status">
     <div class="stat"><small>Bridge 状态</small><b><i class="dot" id="status-dot"></i><span id="status">检查中</span></b></div>
@@ -43,6 +43,7 @@
   </div></section>
 
   <section><h2>当前能力</h2><div class="grid">
+    <div class="card"><h3>PC-98 浏览器会话</h3><p>从同一份 RomM manifest 选择游戏，服务器端启动 NP2Kai；浏览器接收画面和输入，用户 token 约束下载、换盘和状态。</p><span class="tag">浏览器游玩</span><span class="tag">Bridge 会话</span><span class="tag">多盘控制</span></div>
     <div class="card"><h3>共享游戏与固件</h3><p>所有用户复用服务器上的一份 ROM、BIOS 和媒体资源；客户端只保留自己玩过或主动缓存的内容。</p><span class="tag">按需下载</span><span class="tag">多盘游戏</span><span class="tag">完整性校验</span></div>
     <div class="card"><h3>个人数据隔离</h3><p>不同 RomM 用户拥有各自的收藏、隐藏、游玩记录、存档与设备身份；同一用户的多台设备可以接续。</p><span class="tag">收藏/隐藏</span><span class="tag">游玩会话</span><span class="tag">多用户</span></div>
     <div class="card"><h3>ES-DE 会话同步</h3><p>启动 ES-DE 前同步目录与封面；运行时收藏/隐藏变化会立即推送；退出时再做一次收尾同步。客户端没有固定轮询常驻任务。</p><span class="tag">启动前</span><span class="tag">会话中</span><span class="tag">退出后</span></div>
